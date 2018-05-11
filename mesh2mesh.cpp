@@ -60,35 +60,6 @@ return moab::MB_SUCCESS;
 
 }
 
-//Coord find_centroid(moab::EntityHandle ve){
-//
-//moab::ErrorCode rval;
-//const moab::EntityHandle *connectivity;
-//int number_nodes = 0;
-//rval = mbi.get_connectivity(ve, connectivity, number_nodes,true);
-//Coord coord;
-//
-//coord.x=0.0;
-//coord.y=0.0;
-//coord.z=0.0;
-//
-//for(int i = 0; i< number_nodes; i++)
-//{
-//   double node_coords[3];
-//   rval = mbi.get_coords(&(connectivity[i]), 1, node_coords);
-//  
-//   coord.x+=node_coords[0];
-//   coord.y+=node_coords[1];
-//   coord.z+=node_coords[2];
-//}
-//
-//coord.x/=(double)number_nodes;
-//coord.y/=(double)number_nodes;
-//coord.z/=(double)number_nodes;
-//
-//return coord;
-//}
-
 moab::CartVect find_centroid(moab::EntityHandle ve){
 
 moab::ErrorCode rval;
@@ -127,8 +98,8 @@ moab::ErrorCode rval;
 moab::Range ves1, ves2;
 moab::EntityHandle fileset2, set1;
 rval = setup(argv[1], argv[2], ves1, ves2, fileset2,set1);
-std::cout << "num ves2 " << ves2.size() << std::endl;
 std::cout << "num ves1 " << ves1.size() << std::endl;
+std::cout << "num ves2 " << ves2.size() << std::endl;
 
 
 // Create a tree to use for the location service
@@ -147,13 +118,15 @@ moab::Tag flux_tag;
 rval = mbi.tag_get_handle(flux_tag_name.c_str(),
                            moab::MB_TAG_VARLEN,
                            moab::MB_TYPE_DOUBLE,
-                           flux_tag);
+                           flux_tag,
+                           moab::MB_TAG_SPARSE|moab::MB_TAG_CREAT);
 int num_e_groups = num_groups(flux_tag);
 std::vector<double> groupwise_flux(num_e_groups);
+std::vector<double> zero_flux(num_e_groups);
+std::fill (zero_flux.begin(), zero_flux.end(), 0);
 
 
 // for each ve in set 2, find centroid
-//moab::CartVect point; // centroid from ve in set 2 to find in set 1
 moab::EntityHandle leaf; // set of elements that contains point
 moab::CartVect params;
 int is_inside = 0;
@@ -161,21 +134,29 @@ moab::EntityHandle ve1;
 unsigned int num;
 moab::Range::iterator it;
 for( it = ves2.begin(); it != ves2.end(); ++ it){
+     // first, set the flux tag on the ve from set 2 to zero 
+     rval = mbi.tag_set_data(flux_tag, &(*it), 1, &zero_flux[0]);
+     MB_CHK_SET_ERR(rval, "Could not set flux tag to zero on 'map-to' mesh");
+
    //Coord centroid = find_centroid(*it);
    moab::CartVect centroid = find_centroid(*it);
- //  point.array()[0] = centroid.x;
- //  point.array()[1] = centroid.y;
- //  point.array()[2] = centroid.z;
    // find ve in set 1 that encloses centroid point
    rval = sl.locate_point(centroid.array(), leaf, params.array(), &is_inside);MB_CHK_ERR(rval);
    if (is_inside){
-     rval = el_eval.find_containing_entity(leaf, centroid.array(), 1e-4, 1e-6, ve1, params.array(), &num);MB_CHK_ERR(rval);
+     rval = el_eval.find_containing_entity(leaf, centroid.array(), 1e-1, 1e-1, ve1, params.array(), &num);MB_CHK_ERR(rval);
 
-     // get the flux tag on the ve from set 1 enclosing the point
-     rval = mbi.tag_get_data(flux_tag, &ve1, 1, &groupwise_flux[0]);//MB_CHK_ERR(rval);
+     if ( ve1 == 0 ){
+       std::cout << "Warning, can't find underlying mesh element"<< std::endl; 
+     }
+     else{
+       // get the flux tag on the ve from set 1 enclosing the point
+       rval = mbi.tag_get_data(flux_tag, &ve1, 1, &groupwise_flux[0]);//MB_CHK_ERR(rval);
+       MB_CHK_SET_ERR(rval, "Could not get flux tag");
 
-     // set the flux tag on the ve from set 2 we are mapping to
-     rval = mbi.tag_set_data(flux_tag, &(*it), 1, &groupwise_flux[0]);//MB_CHK_ERR(rval);
+       // set the flux tag on the ve from set 2 we are mapping to
+       rval = mbi.tag_set_data(flux_tag, &(*it), 1, &groupwise_flux[0]);//MB_CHK_ERR(rval);
+       MB_CHK_SET_ERR(rval, "Could not set flux tag");
+     }
   }// is_inside
 }
 

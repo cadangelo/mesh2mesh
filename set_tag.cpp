@@ -32,31 +32,47 @@ MB_CHK_SET_ERR(rval, "Error loading file.");
 
 // Get all 3D elements in fileset 1
 rval = mbi.get_entities_by_dimension(fileset, 3, ves);MB_CHK_SET_ERR(rval, "Error getting 3d elements");
+MB_CHK_SET_ERR(rval, "Error getting entities by dimension.");
+
+//// Get flux tag
+//std::string flux_tag_name ("flux");
+//rval = mbi.tag_get_handle(flux_tag_name.c_str(),
+////                           moab::MB_TAG_VARLEN,
+////                           moab::MB_TYPE_DOUBLE,
+//                          1,
+//                          moab::MB_TYPE_INTEGER,
+//                          flux_tag,
+//                          moab::MB_TAG_SPARSE|moab::MB_TAG_CREAT);
+//MB_CHK_SET_ERR(rval, "Error getting flux tag.");
+//int flux = std::stoi(argv[2]);
+////int flux =1 ;
+
 
 // Get flux tag
 std::string flux_tag_name ("flux");
 rval = mbi.tag_get_handle(flux_tag_name.c_str(),
-//                           moab::MB_TAG_VARLEN,
-//                           moab::MB_TYPE_DOUBLE,
-                          1,
-                          moab::MB_TYPE_INTEGER,
-                          flux_tag,
-                          moab::MB_TAG_SPARSE|moab::MB_TAG_CREAT);
-MB_CHK_SET_ERR(rval, "Error getting flux tag.");
-int flux = std::stoi(argv[2]);
-//int flux =1 ;
+                           moab::MB_TAG_VARLEN,
+                           moab::MB_TYPE_DOUBLE,
+                           flux_tag,
+                           moab::MB_TAG_SPARSE|moab::MB_TAG_CREAT);
+int num_e_groups = 217;//num_groups(flux_tag);
+std::vector<double> flux(num_e_groups);
+std::fill (flux.begin(), flux.end(), 5);
 
 moab::Range::iterator it;
 for( it = ves.begin(); it != ves.end(); ++ it){
      // set the flux tag on the ve from set 2 we are mapping to
-     rval = mbi.tag_set_data(flux_tag, &(*it), 1, &flux);MB_CHK_ERR(rval);
+     rval = mbi.tag_set_data(flux_tag, &(*it), 1, &flux[0]);MB_CHK_ERR(rval);
+     rval = mbi.tag_get_data(flux_tag, &(*it), 1, &flux[0]);MB_CHK_ERR(rval);
+     MB_CHK_SET_ERR(rval, "Error setting flux tag.");
 }
-
+std::cout << "flux tag " << flux[0] << std::endl;
 // Write out mesh 2 w/ mapped data
 moab::EntityHandle output_list[] = {fileset};
-std::string filenum = std::to_string(flux);
+//std::string filenum = std::to_string(flux);
+std::string filenum = "zero";
 std::string basename = "taggeddata.h5m";
-rval = mbi.write_mesh((filenum+basename).c_str(), output_list, 1);
+//rval = mbi.write_mesh((filenum+basename).c_str(), output_list, 1);
 
 
 

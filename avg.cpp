@@ -68,7 +68,8 @@ std::string flux_tag_name ("flux");
 rval = mbi.tag_get_handle(flux_tag_name.c_str(),
                            moab::MB_TAG_VARLEN,
                            moab::MB_TYPE_DOUBLE,
-                           flux_tag);
+                           flux_tag,
+                           moab::MB_TAG_SPARSE|moab::MB_TAG_CREAT);
 int num_e_groups = num_groups(flux_tag);
 std::cout << "num e groups " << num_e_groups << std::endl;
 std::vector<double> flux(num_e_groups);
