@@ -30,6 +30,10 @@ int num_groups(moab::Tag tag) {
   return tag_size/sizeof(double);
 }
 
+moab::ErrorCode expand_tag(){
+
+}
+
 moab::ErrorCode setup(std::string file1, std::string file2, 
                       moab::Range &ves1,
                       moab::Range &ves2,
@@ -133,6 +137,9 @@ int is_inside = 0;
 moab::EntityHandle ve1;
 unsigned int num;
 moab::Range::iterator it;
+std::string scalar_flux_tag_name;
+moab::Tag one_group_flux;
+std::vector<moab::Tag> single_group_flux_tags;
 for( it = ves2.begin(); it != ves2.end(); ++ it){
      // first, set the flux tag on the ve from set 2 to zero 
      rval = mbi.tag_set_data(flux_tag, &(*it), 1, &zero_flux[0]);
@@ -152,6 +159,18 @@ for( it = ves2.begin(); it != ves2.end(); ++ it){
        // get the flux tag on the ve from set 1 enclosing the point
        rval = mbi.tag_get_data(flux_tag, &ve1, 1, &groupwise_flux[0]);//MB_CHK_ERR(rval);
        MB_CHK_SET_ERR(rval, "Could not get flux tag");
+   
+       //expand the vector tag to a scalar tag
+       for(int grp=0; grp <= num_e_groups-1; grp++){
+         scalar_flux_tag_name = "flux"+std::to_string(grp);
+         rval = mbi.tag_get_handle(scalar_flux_tag_name.c_str(), 1, 
+                                   moab::MB_TYPE_DOUBLE, one_group_flux,
+                                   moab::MB_TAG_SPARSE|moab::MB_TAG_CREAT);
+         MB_CHK_SET_ERR(rval, "Could not get flux tag handle");
+//         single_group_flux_tags[grp] = groupwise_flux[grp];
+         rval = mbi.tag_set_data(one_group_flux, &(*it), 1, &(groupwise_flux[grp]));//MB_CHK_ERR(rval);
+         MB_CHK_SET_ERR(rval, "Could not set flux tag");
+       }
 
        // set the flux tag on the ve from set 2 we are mapping to
        rval = mbi.tag_set_data(flux_tag, &(*it), 1, &groupwise_flux[0]);//MB_CHK_ERR(rval);
