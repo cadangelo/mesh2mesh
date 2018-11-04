@@ -82,6 +82,13 @@ moab::EntityHandle fileset2, set1;
 rval = setup(argv[1], ves1, set1);
 std::cout << "num ves1 " << ves1.size() << std::endl;
 
+moab::Tag flux_tag;
+std::string flux_tag_name ("flux");
+rval = mbi.tag_get_handle(flux_tag_name.c_str(),
+                           moab::MB_TAG_VARLEN,
+                           moab::MB_TYPE_DOUBLE,
+                           flux_tag,
+                           moab::MB_TAG_SPARSE|moab::MB_TAG_CREAT);
 const char* delimiter = "_";
 const char* delimiter2 = "-";
 
@@ -92,30 +99,67 @@ for( it = ves1.begin(); it != ves1.end(); ++ it){
   rval = mbi.tag_get_tags_on_entity(*it, tag_handles);
   std::vector<double> collected_ebounds;
   std::vector<moab::Tag>::iterator itv;
+  std::map<double, double> ebound_to_data_map;
   for (itv = tag_handles.begin(); itv != tag_handles.end(); ++itv){
     std::string tag_name;
     rval = mbi.tag_get_name(*itv, tag_name);
     // Tokenize the line
     std::vector<std::string> tokens;
     tokenize(tag_name, tokens, delimiter);
+    // Find Tally tags whose names end w/ energy bounds
     if(tokens[0] == "TALLY" && tokens.size() > 2){
+      // get lower energy bound
       std::vector<std::string> ebounds;
       tokenize(tokens[2], ebounds, delimiter2);
-      double ebound;
-      if(ebounds.size() > 2){
-       ebound = sciToDub(ebounds[0]+"-"+ebounds[1]);
+      double lebound; // lower energy bound
+      if(ebounds.size() > 2){  //if > 2, number in sci-not so also split by - sign
+       lebound = sciToDub(ebounds[0]+"-"+ebounds[1]);
       }
       else{
-        ebound = std::atof(ebounds[0].c_str());
+        lebound = std::atof(ebounds[0].c_str());
       }
-      collected_ebounds.push_back(ebound);
+      if (it == ves1.begin()){
+        collected_ebounds.push_back(lebound);
+      }
+      // get tally data (scalar flux tag)
+      double single_group_flux;
+      rval = mbi.tag_get_data(*itv, &(*it), 1, &single_group_flux);
+      MB_CHK_SET_ERR(rval, "Could not get single group flux");
+      // map lower e_bound to tally data
+      ebound_to_data_map[lebound] = single_group_flux;
+      std::cout << "single grp flux, lebound " << single_group_flux << ", " << lebound << std::endl;
+      // delete scalar tag
+      rval = mbi.tag_delete(*itv);
+      MB_CHK_SET_ERR(rval, "Could not delete scalar tag");
     }
   }
-  std::sort(collected_ebounds.begin(), collected_ebounds.end());
-  std::vector<double>::iterator its;
-  for(its = collected_ebounds.begin(); its != collected_ebounds.end(); ++its){
-    std::cout << "sorted " << *its << std::endl;
+  std::map<int, double> group_to_ebound;
+  if (it == ves1.begin()){
+    std::sort(collected_ebounds.begin(), collected_ebounds.end());
+    std::vector<double>::iterator its;
+    int i = 1;
+    for(its = collected_ebounds.begin(); its != collected_ebounds.end(); ++its){
+      group_to_ebound[i] = *its;
+      std::cout << "grp to bound " << i << ", " << group_to_ebound[i] << std::endl;
+      ++i;
+    }
+//    std::cout << "group 1, 175  "<< group_to_ebound[0] << ", " << group_to_ebound[175] << std::endl;
+  
   }
+  // create vector tag
+  int num_e_groups = collected_ebounds.size()+1;
+  std::vector<double> groupwise_flux(num_e_groups);
+  for (int j = 1; j < num_e_groups; ++j){
+    double ebound = group_to_ebound[j];
+    groupwise_flux[j] = ebound_to_data_map[ebound]; 
+  }
+  rval = mbi.tag_set_data(flux_tag, &(*it), 1, &groupwise_flux[0]);//MB_CHK_ERR(rval);
+  MB_CHK_SET_ERR(rval, "Could not set vector flux tag");
+  //int grp = 175;
+  //std::cout << "vector flux, grp " << groupwise_flux[grp] << ", " << grp << std::endl;
+
+
 }
+rval = mbi.write_mesh("collapsed.h5m");
 
 }
