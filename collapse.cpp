@@ -85,7 +85,7 @@ std::cout << "num ves1 " << ves1.size() << std::endl;
 moab::Tag flux_tag;
 std::string flux_tag_name ("n_flux");
 rval = mbi.tag_get_handle(flux_tag_name.c_str(),
-                           moab::MB_TAG_VARLEN,
+                           175,//moab::MB_TAG_VARLEN,
                            moab::MB_TYPE_DOUBLE,
                            flux_tag,
                            moab::MB_TAG_SPARSE|moab::MB_TAG_CREAT);
@@ -150,14 +150,20 @@ for( it = ves1.begin(); it != ves1.end(); ++ it){
   // create vector tag
   int num_e_groups = 175;//collected_ebounds.size();
   std::vector<double> groupwise_flux(num_e_groups);
+  std::vector<double> get_groupwise_flux(num_e_groups);
   for (int j = 0 ; j < num_e_groups; ++j){
     double ebound = group_to_ebound[j+1];
     groupwise_flux[j] = ebound_to_data_map[ebound];
   }
   rval = mbi.tag_set_data(flux_tag, &(*it), 1, &groupwise_flux[0]);//MB_CHK_ERR(rval);
   MB_CHK_SET_ERR(rval, "Could not set vector flux tag");
-  int grp = 17;
-  std::cout << "vector flux, size" << groupwise_flux[grp] << ", " << groupwise_flux.size() << std::endl;
+  rval = mbi.tag_get_data(flux_tag, &(*it), 1, &get_groupwise_flux[0]);//MB_CHK_ERR(rval);
+  MB_CHK_SET_ERR(rval, "Could not set vector flux tag");
+  int grp = 25;
+  std::cout << "vector flux, size" << get_groupwise_flux[grp] << ", " << get_groupwise_flux.size() << std::endl;
+  int length;
+  rval = mbi.tag_get_length(flux_tag, length);
+  std::cout << "length" << length << std::endl;
 
 
 }
