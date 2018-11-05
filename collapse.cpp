@@ -83,7 +83,7 @@ rval = setup(argv[1], ves1, set1);
 std::cout << "num ves1 " << ves1.size() << std::endl;
 
 moab::Tag flux_tag;
-std::string flux_tag_name ("flux");
+std::string flux_tag_name ("n_flux");
 rval = mbi.tag_get_handle(flux_tag_name.c_str(),
                            moab::MB_TAG_VARLEN,
                            moab::MB_TYPE_DOUBLE,
@@ -92,12 +92,14 @@ rval = mbi.tag_get_handle(flux_tag_name.c_str(),
 const char* delimiter = "_";
 const char* delimiter2 = "-";
 
+std::vector<double> collected_ebounds;
+std::map<int, double> group_to_ebound;
+
 moab::Range::iterator it;
 for( it = ves1.begin(); it != ves1.end(); ++ it){
   std::cout << "el # " << *it << std::endl;
   std::vector<moab::Tag> tag_handles;
   rval = mbi.tag_get_tags_on_entity(*it, tag_handles);
-  std::vector<double> collected_ebounds;
   std::vector<moab::Tag>::iterator itv;
   std::map<double, double> ebound_to_data_map;
   for (itv = tag_handles.begin(); itv != tag_handles.end(); ++itv){
@@ -129,11 +131,10 @@ for( it = ves1.begin(); it != ves1.end(); ++ it){
       ebound_to_data_map[lebound] = single_group_flux;
       std::cout << "single grp flux, lebound " << single_group_flux << ", " << lebound << std::endl;
       // delete scalar tag
-      rval = mbi.tag_delete(*itv);
-      MB_CHK_SET_ERR(rval, "Could not delete scalar tag");
+      //rval = mbi.tag_delete(*itv);
+      //MB_CHK_SET_ERR(rval, "Could not delete scalar tag");
     }
   }
-  std::map<int, double> group_to_ebound;
   if (it == ves1.begin()){
     std::sort(collected_ebounds.begin(), collected_ebounds.end());
     std::vector<double>::iterator its;
@@ -147,16 +148,16 @@ for( it = ves1.begin(); it != ves1.end(); ++ it){
   
   }
   // create vector tag
-  int num_e_groups = collected_ebounds.size()+1;
+  int num_e_groups = 175;//collected_ebounds.size();
   std::vector<double> groupwise_flux(num_e_groups);
-  for (int j = 1; j < num_e_groups; ++j){
-    double ebound = group_to_ebound[j];
-    groupwise_flux[j] = ebound_to_data_map[ebound]; 
+  for (int j = 0 ; j < num_e_groups; ++j){
+    double ebound = group_to_ebound[j+1];
+    groupwise_flux[j] = ebound_to_data_map[ebound];
   }
   rval = mbi.tag_set_data(flux_tag, &(*it), 1, &groupwise_flux[0]);//MB_CHK_ERR(rval);
   MB_CHK_SET_ERR(rval, "Could not set vector flux tag");
-  //int grp = 175;
-  //std::cout << "vector flux, grp " << groupwise_flux[grp] << ", " << grp << std::endl;
+  int grp = 17;
+  std::cout << "vector flux, size" << groupwise_flux[grp] << ", " << groupwise_flux.size() << std::endl;
 
 
 }
