@@ -1,4 +1,5 @@
 #include <iostream>
+#include <boost/program_options.hpp>
 #include <cstdlib>
 #include <cstdio>
 
@@ -11,6 +12,8 @@
 #include "moab/SpatialLocator.hpp"
 #include "moab/Util.hpp"
 #include "moab/GeomUtil.hpp"
+
+namespace po = boost::program_options;
 
 moab::Core mbi;
 
@@ -30,11 +33,60 @@ int num_groups(moab::Tag tag) {
   return tag_size/sizeof(double);
 }
 
-moab::ErrorCode setup(std::string file1, std::string file2, 
+//moab::ErrorCode setup(std::string file1, std::string file2, 
+moab::ErrorCode setup(int argc, char* argv[], 
                       moab::Range &ves1,
                       moab::Range &ves2,
                       moab::EntityHandle &fileset2,
-                      moab::EntityHandle &set1){
+                      moab::EntityHandle &set1, 
+                      bool &expand,
+                      std::string &map_tag_name){
+  // process command line flags
+  po::options_description desc("Allowed options");
+  desc.add_options()
+      ("help", "Help message")
+      ("expand", po::value<bool>(), "Expand vector tags?")
+      ("mesh1", po::value<std::string>(), "Mesh with values that will be mapped onto second mesh file")
+      ("mesh2", po::value<std::string>(), "Second mesh file that will have values mapped onto it")
+      ("tag", po::value<std::string>(), "Name of tag to map from mesh 1 to mesh 2")
+  ;
+
+  po::variables_map vm;
+  po::store(po::parse_command_line(argc, argv, desc), vm);
+  po::notify(vm);   
+
+  std::string file1, file2; 
+  
+  if (vm.count("help")) {
+      std::cout << desc << std::endl;
+      return moab::MB_FAILURE;
+  }
+  
+  if (vm.count("expand")) {
+      std::cout << "Expand tags? " << vm["expand"].as<bool>() << std::endl;
+      expand = vm["expand"].as<bool>();
+  } else {
+      std::cout << "Expand flag not set." << std::endl;;
+  }
+  if (vm.count("mesh1")) {
+      std::cout << "Mesh 1 file name " << vm["mesh1"].as<std::string>() << std::endl;
+      file1 =  vm["mesh1"].as<std::string>();
+  } else {
+      std::cout << "Mesh 1 file not set." << std::endl;;
+  }
+  if (vm.count("mesh2")) {
+      std::cout << "Mesh 2 file name " << vm["mesh2"].as<std::string>() << std::endl;
+      file2 =  vm["mesh2"].as<std::string>();
+  } else {
+      std::cout << "Mesh 2 file not set." << std::endl;;
+  }
+  if (vm.count("tag")) {
+      std::cout << "Tag name " << vm["tag"].as<std::string>() << std::endl;
+      map_tag_name =  vm["tag"].as<std::string>();
+  } else {
+      std::cout << "Tag name not set." << std::endl;;
+  }
+
 moab::ErrorCode rval;
 
 // create sets for mesh elements 
@@ -97,9 +149,13 @@ moab::ErrorCode rval;
 // Setup loads files and populates volume element ranges
 moab::Range ves1, ves2;
 moab::EntityHandle fileset2, set1;
-rval = setup(argv[1], argv[2], ves1, ves2, fileset2,set1);
-std::cout << "num ves1 " << ves1.size() << std::endl;
-std::cout << "num ves2 " << ves2.size() << std::endl;
+bool expand; //expand tags
+std::string map_tag_name;
+//rval = setup(argv[1], argv[2], ves1, ves2, fileset2, set1, expand);
+rval = setup(argc, argv, ves1, ves2, fileset2, set1, expand, map_tag_name);
+std::cout << "num vol elements in file 1 " << ves1.size() << std::endl;
+std::cout << "num vol elements in file 2 " << ves2.size() << std::endl;
+std::cout << "map tag name " << map_tag_name << std::endl;
 
 
 // Create a tree to use for the location service
@@ -115,27 +171,24 @@ moab::SpatialLocator sl(&mbi, ves1, &tree);
 // Get flux tag
 //std::string flux_tag_name ("flux");
 //std::string flux_tag_name ("source_density");
-std::string flux_tag_name ("photon_result");
-std::string source_tag_name ("source_density");
+//std::string flux_tag_name ("photon_result");
+//std::string source_tag_name ("source_density");
 moab::Tag flux_tag;
 moab::Tag source_tag;
-rval = mbi.tag_get_handle(flux_tag_name.c_str(),
+rval = mbi.tag_get_handle(map_tag_name.c_str(),
                            moab::MB_TAG_VARLEN,
                            moab::MB_TYPE_DOUBLE,
                            flux_tag,
                            moab::MB_TAG_SPARSE|moab::MB_TAG_CREAT);
-rval = mbi.tag_get_handle(source_tag_name.c_str(),
-                           moab::MB_TAG_VARLEN,
-                           moab::MB_TYPE_DOUBLE,
-                           source_tag,
-                           moab::MB_TAG_SPARSE|moab::MB_TAG_CREAT);
+//rval = mbi.tag_get_handle(source_tag_name.c_str(),
+//                           moab::MB_TAG_VARLEN,
+//                           moab::MB_TYPE_DOUBLE,
+//                           source_tag,
+//                           moab::MB_TAG_SPARSE|moab::MB_TAG_CREAT);
 int num_e_groups = num_groups(flux_tag);
 std::vector<double> groupwise_flux(num_e_groups);
 std::vector<double> zero_flux(num_e_groups);
 std::fill (zero_flux.begin(), zero_flux.end(), 0);
-
-
-bool expand = true;
 
 // for each ve in set 2, find centroid
 moab::EntityHandle leaf; // set of elements that contains point
@@ -144,7 +197,7 @@ int is_inside = 0;
 moab::EntityHandle ve1;
 unsigned int num;
 moab::Range::iterator it;
-std::string scalar_flux_tag_name;
+std::string scalar_map_tag_name;
 moab::Tag one_group_flux;
 std::vector<moab::Tag> single_group_flux_tags;
 for( it = ves2.begin(); it != ves2.end(); ++ it){
@@ -166,14 +219,14 @@ for( it = ves2.begin(); it != ves2.end(); ++ it){
        // get the flux tag on the ve from set 1 enclosing the point
        rval = mbi.tag_get_data(flux_tag, &ve1, 1, &groupwise_flux[0]);//MB_CHK_ERR(rval);
        MB_CHK_SET_ERR(rval, "Could not get flux tag");
-       std::cout << "ve1 el, setting data " << *it << ", " << groupwise_flux[0] << std::endl;
+//       std::cout << "ve1 el, setting data " << *it << ", " << groupwise_flux[0] << std::endl;
    
-       if(expand == true){
+       if(expand){
        //expand the vector tag to a scalar tag
        for(int grp=0; grp <= num_e_groups-1; grp++){
-         //scalar_flux_tag_name = "flux"+std::to_string(grp);
-         scalar_flux_tag_name = flux_tag_name+std::to_string(grp);
-         rval = mbi.tag_get_handle(scalar_flux_tag_name.c_str(), 1, 
+         //scalar_map_tag_name = "flux"+std::to_string(grp);
+         scalar_map_tag_name = map_tag_name+std::to_string(grp);
+         rval = mbi.tag_get_handle(scalar_map_tag_name.c_str(), 1, 
                                    moab::MB_TYPE_DOUBLE, one_group_flux,
                                    moab::MB_TAG_SPARSE|moab::MB_TAG_CREAT);
          MB_CHK_SET_ERR(rval, "Could not get flux tag handle");
@@ -186,7 +239,7 @@ for( it = ves2.begin(); it != ves2.end(); ++ it){
        // set the flux tag on the ve from set 2 we are mapping to
        rval = mbi.tag_set_data(flux_tag, &(*it), 1, &groupwise_flux[0]);//MB_CHK_ERR(rval);
        MB_CHK_SET_ERR(rval, "Could not set flux tag");
-       std::cout << "ve2 el, setting data " << *it << ", " << groupwise_flux[0] << std::endl;
+//       std::cout << "ve2 el, setting data " << *it << ", " << groupwise_flux[0] << std::endl;
      }
   }// is_inside
 }
@@ -201,6 +254,7 @@ rval = mbi.tag_delete(idx_tag);
 
 // Write out mesh 2 w/ mapped data
 moab::EntityHandle output_list[] = {fileset2};
+std::cout << "writing mapped data" << std::endl;
 rval = mbi.write_mesh("mappeddata.h5m", output_list, 1);
 
 return 0;
